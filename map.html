@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>서울 서브웨이 & 도미노피자 지점 지도</title>
+    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=27c0bef4a6eeec60668a7d3dd299f8d7"></script>
+    <script src="stores_with_coords.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Malgun Gothic', sans-serif; }
+        #map { width: 100%; height: 100vh; }
+        .custom-overlay {
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+            min-width: 220px;
+            max-width: 320px;
+        }
+        .overlay-subway { border: 3px solid #009223; }
+        .overlay-domino { border: 3px solid #0066CC; }
+        .overlay-title { font-weight: bold; margin-bottom: 8px; font-size: 15px; }
+        .overlay-subway .overlay-title { color: #009223; }
+        .overlay-domino .overlay-title { color: #0066CC; }
+        .overlay-content { font-size: 12px; line-height: 1.6; }
+        .overlay-content div { margin: 4px 0; }
+        .brand-tag {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 6px;
+        }
+        .tag-subway { background: #009223; }
+        .tag-domino { background: #0066CC; }
+        #legend {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+        #legend h3 { margin: 0 0 10px 0; font-size: 14px; }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 8px 0;
+            font-size: 13px;
+        }
+        .legend-label {
+            display: flex;
+            align-items: center;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .color-subway { background: #009223; }
+        .color-domino { background: #0066CC; }
+        .toggle-btn {
+            padding: 4px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            font-size: 11px;
+            margin-left: 10px;
+            transition: all 0.2s;
+        }
+        .toggle-btn.active {
+            background: #4CAF50;
+            color: white;
+            border-color: #4CAF50;
+        }
+        .toggle-btn:hover {
+            background: #f0f0f0;
+        }
+        .toggle-btn.active:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="legend">
+        <h3>매장 범례</h3>
+        <div class="legend-item">
+            <div class="legend-label">
+                <div class="legend-color color-subway"></div>
+                <span>서브웨이 (<span id="subway-count">0</span>개)</span>
+            </div>
+            <button class="toggle-btn active" id="subway-toggle" onclick="toggleSubway()">ON</button>
+        </div>
+        <div class="legend-item">
+            <div class="legend-label">
+                <div class="legend-color color-domino"></div>
+                <span>도미노피자 (<span id="domino-count">0</span>개)</span>
+            </div>
+            <button class="toggle-btn active" id="domino-toggle" onclick="toggleDomino()">ON</button>
+        </div>
+    </div>
+
+    <script>
+        var map;
+        var subwayMarkers = [];
+        var dominoMarkers = [];
+        var subwayVisible = true;
+        var dominoVisible = true;
+
+        function initMap() {
+            var container = document.getElementById('map');
+            var options = {
+                center: new kakao.maps.LatLng(37.5665, 126.9780),
+                level: 8
+            };
+
+            map = new kakao.maps.Map(container, options);
+
+            document.getElementById('subway-count').textContent = subwayStores.length;
+            document.getElementById('domino-count').textContent = dominoStores.length;
+
+            subwayStores.forEach(function(store) {
+                var marker = createMarker(store, 'subway');
+                subwayMarkers.push(marker);
+            });
+
+            dominoStores.forEach(function(store) {
+                var marker = createMarker(store, 'domino');
+                dominoMarkers.push(marker);
+            });
+
+            console.log('지도 로딩 완료! 서브웨이: ' + subwayStores.length + ', 도미노: ' + dominoStores.length);
+        }
+
+        function createMarker(store, brand) {
+            var position = new kakao.maps.LatLng(store.lat, store.lng);
+
+            var markerImageSrc = brand === 'subway' ?
+                'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzUiIGhlaWdodD0iMzUiIHZpZXdCb3g9IjAgMCAzNSAzNSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNy41IiBjeT0iMTcuNSIgcj0iMTcuNSIgZmlsbD0iIzAwOTIyMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPlM8L3RleHQ+PC9zdmc+':
+                'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzUiIGhlaWdodD0iMzUiIHZpZXdCb3g9IjAgMCAzNSAzNSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNy41IiBjeT0iMTcuNSIgcj0iMTcuNSIgZmlsbD0iIzAwNjZDQyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkQ8L3RleHQ+PC9zdmc+';
+
+            var imageSize = new kakao.maps.Size(35, 35);
+            var markerImage = new kakao.maps.MarkerImage(markerImageSrc, imageSize);
+
+            var marker = new kakao.maps.Marker({
+                map: map,
+                position: position,
+                image: markerImage,
+                title: store.name
+            });
+
+            var brandClass = brand === 'subway' ? 'overlay-subway' : 'overlay-domino';
+            var tagClass = brand === 'subway' ? 'tag-subway' : 'tag-domino';
+            var brandName = brand === 'subway' ? '서브웨이' : '도미노피자';
+
+            var overlayContent =
+                '<div class="custom-overlay ' + brandClass + '">' +
+                    '<div class="brand-tag ' + tagClass + '">' + brandName + '</div>' +
+                    '<div class="overlay-title">' + store.name + '</div>' +
+                    '<div class="overlay-content">' +
+                        '<div>📍 ' + store.district + '</div>' +
+                        '<div>📞 ' + store.phone + '</div>' +
+                        '<div>🏠 ' + store.address + '</div>' +
+                    '</div>' +
+                '</div>';
+
+            var customOverlay = new kakao.maps.CustomOverlay({
+                content: overlayContent,
+                position: position,
+                yAnchor: 2.2
+            });
+
+            kakao.maps.event.addListener(marker, 'mouseover', function() {
+                customOverlay.setMap(map);
+            });
+
+            kakao.maps.event.addListener(marker, 'mouseout', function() {
+                customOverlay.setMap(null);
+            });
+
+            kakao.maps.event.addListener(marker, 'click', function() {
+                if (customOverlay.getMap()) {
+                    customOverlay.setMap(null);
+                } else {
+                    customOverlay.setMap(map);
+                }
+            });
+
+            return {marker: marker, overlay: customOverlay};
+        }
+
+        function toggleSubway() {
+            subwayVisible = !subwayVisible;
+            var btn = document.getElementById('subway-toggle');
+
+            subwayMarkers.forEach(function(item) {
+                item.marker.setMap(subwayVisible ? map : null);
+                if (!subwayVisible) {
+                    item.overlay.setMap(null);
+                }
+            });
+
+            if (subwayVisible) {
+                btn.classList.add('active');
+                btn.textContent = 'ON';
+            } else {
+                btn.classList.remove('active');
+                btn.textContent = 'OFF';
+            }
+        }
+
+        function toggleDomino() {
+            dominoVisible = !dominoVisible;
+            var btn = document.getElementById('domino-toggle');
+
+            dominoMarkers.forEach(function(item) {
+                item.marker.setMap(dominoVisible ? map : null);
+                if (!dominoVisible) {
+                    item.overlay.setMap(null);
+                }
+            });
+
+            if (dominoVisible) {
+                btn.classList.add('active');
+                btn.textContent = 'ON';
+            } else {
+                btn.classList.remove('active');
+                btn.textContent = 'OFF';
+            }
+        }
+
+        window.onload = initMap;
+    </script>
+</body>
+</html>
